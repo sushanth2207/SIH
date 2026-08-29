@@ -72,3 +72,25 @@ body {
 .panel h2 {
   margin-top: 0;
 }
+
+.data-note,
+.error-message {
+  color: #6b7280;
+  max-width: 640px;
+}
+
+.error-message {
+  color: #b91c1c;
+}
+
+.ward-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.ward-table th,
+.ward-table td {
+  text-align: left;
+  padding: 10px 8px;
+  border-bottom: 1px solid #e5e7eb;
+}
