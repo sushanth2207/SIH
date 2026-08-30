@@ -50,4 +50,13 @@
 .heat-map-demo .risk-legend, .heat-map-demo .ward-overlay { pointer-events: none; }
 .heat-map-demo .map-demo-label { padding: 4px 7px; border-radius: 3px; background: #090b0dcc; }
 .selected-zone-label { display: block; margin-bottom: 3px; color: #ffbf08; font: 700 .55rem ui-monospace, monospace; letter-spacing: .8px; }
+.alerts-list { display: grid; gap: 8px; max-height: 137px; padding-right: 3px; overflow-y: auto; }
+.alerts-list .warning-card { margin-top: 0; padding: 10px 12px; }
+.alert-heading { display: flex; align-items: start; justify-content: space-between; gap: 8px; }
+.alert-heading strong { font-size: .78rem; }
+.alert-severity { flex: 0 0 auto; padding: 2px 5px; color: #2b0d0d !important; border-radius: 2px; background: #ffaaa4; font-size: .56rem !important; font-weight: 800; }
+.alerts-list .warning-card > span:not(.alert-severity) { font-size: .68rem; }
+.alerts-list .warning-card p { font-size: .68rem; line-height: 1.35; }
+.alerts-list .alert-high { border-color: #815217; background: linear-gradient(125deg, #382208, #1c1205); }
+.alert-high .alert-severity { background: #ff9a22; }
 @media (max-width: 760px) { .heatguard-leaflet-map .leaflet-control-zoom { margin: 10px 10px 0 0; }.heatguard-leaflet-map .leaflet-control-zoom a { width: 34px; height: 34px; line-height: 31px; } }
