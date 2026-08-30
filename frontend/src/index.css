@@ -59,4 +59,7 @@
 .alerts-list .warning-card p { font-size: .68rem; line-height: 1.35; }
 .alerts-list .alert-high { border-color: #815217; background: linear-gradient(125deg, #382208, #1c1205); }
 .alert-high .alert-severity { background: #ff9a22; }
+.distribution-donut { position: relative; display: grid; width: 160px; height: 160px; place-items: center; }
+.distribution-donut > span { position: absolute; color: #f5eee7; font-size: .8rem; pointer-events: none; }
+.line-chart .recharts-wrapper { font-family: inherit; }
 @media (max-width: 760px) { .heatguard-leaflet-map .leaflet-control-zoom { margin: 10px 10px 0 0; }.heatguard-leaflet-map .leaflet-control-zoom a { width: 34px; height: 34px; line-height: 31px; } }

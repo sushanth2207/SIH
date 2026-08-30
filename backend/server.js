@@ -79,6 +79,23 @@ app.get("/api/dashboard", (req, res) => {
         affectedZones: ["Raidurg Demo Zone"],
       },
     ],
+    analytics: {
+      dataType: "synthetic_demo",
+      heatIndexTrend: [
+        { label: "24 May", heatIndex: 38.6 },
+        { label: "25 May", heatIndex: 39.1 },
+        { label: "26 May", heatIndex: 37.9 },
+        { label: "28 May", heatIndex: 40.5 },
+        { label: "29 May", heatIndex: 39.8 },
+        { label: "30 May", heatIndex: 41.2 },
+      ],
+      riskLevelDistribution: [
+        { riskLevel: "VERY_HIGH", count: 2 },
+        { riskLevel: "HIGH", count: 2 },
+        { riskLevel: "MODERATE", count: 1 },
+        { riskLevel: "LOW", count: 0 },
+      ],
+    },
   });
 });
 
