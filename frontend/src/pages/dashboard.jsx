@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { Badge, Button } from "react-bootstrap";
+import { MapContainer, Polygon, Popup, TileLayer, ZoomControl } from "react-leaflet";
+import "leaflet/dist/leaflet.css";
 import { getDashboardData } from "../services/api";
+import { demoHeatZones, riskZoneColors } from "../data/demoHeatZones";
 
 const navigationItems = [["▦", "Overview"], ["⌑", "Heat Maps"], ["⚠", "Risk Zones"], ["◉", "Sensors"], ["▥", "Analytics"], ["☼", "Forecasts"], ["✱", "Response"], ["▤", "Reports"], ["◴", "History"], ["⚒", "Maintenance"]];
 const forecastDetails = [{ date: "30 May", range: "41 – 43 °C", icon: "☀" }, { date: "31 May", range: "43 – 45 °C", icon: "♨" }, { date: "1 Jun", range: "42 – 44 °C", icon: "◒" }];
@@ -12,6 +15,7 @@ function Dashboard() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [selectedZone, setSelectedZone] = useState(null);
   useEffect(() => {
     let cancelled = false;
     async function loadDashboard() {
@@ -25,8 +29,9 @@ function Dashboard() {
   if (loading) return <div className="dashboard-state"><div className="loading-orb" /><p>Loading HeatGuard dashboard data…</p></div>;
   if (error) return <div className="dashboard-state"><h1>HEATGUARD</h1><p className="error-message">{error}</p></div>;
 
-  const { summary, wards, forecast, note } = data;
+  const { wards, forecast, note } = data;
   const selectedWard = wards.find((ward) => ward.areaId === "ward_12") || wards[0];
+  const displayedZone = selectedZone || { wardName: `${selectedWard.name} Demo Zone`, riskLevel: selectedWard.riskLevel, riskScore: selectedWard.riskScore, heatIndex: "44.7 °C", thermalStress: selectedWard.thermalStress };
   const priorityWards = [...wards].sort((a, b) => b.riskScore - a.riskScore).slice(0, 3);
   const distribution = { VERY_HIGH: wards.filter((ward) => ward.riskLevel === "VERY_HIGH").length, HIGH: wards.filter((ward) => ward.riskLevel === "HIGH").length, MODERATE: wards.filter((ward) => ward.riskLevel === "MODERATE").length, LOW: wards.filter((ward) => ward.riskLevel === "LOW").length };
   return <div className="heatguard-shell">
@@ -39,10 +44,9 @@ function Dashboard() {
     <main className="heatguard-main">
       <section className="primary-dashboard-grid">
         <section className="map-panel heat-panel">
-          <div className="panel-heading"><div><h1>Heat Risk Map – Hyderabad</h1><p>DEMO VISUALIZATION <span>|</span> 24/7 MONITORING</p></div><div className="map-controls"><Button aria-label="Zoom in">+</Button><Button aria-label="Zoom out">−</Button></div></div>
-          <div className="heat-map-demo" aria-label="Demo heat risk map, not live geographic data"><div className="map-grid" /><div className="map-road road-one" /><div className="map-road road-two" /><div className="map-road road-three" /><span className="map-label label-one">RAIDURGAR</span><span className="map-label label-two">MALAKPET</span><span className="map-label label-three">OLD CITY</span><span className="heat-spot spot-one" /><span className="heat-spot spot-two" /><span className="heat-spot spot-three" /><span className="heat-spot spot-four" />
+          <div className="heat-map-demo" aria-label="Synthetic demo heat risk map, not official ward boundaries"><MapContainer center={[17.385, 78.4867]} zoom={12} zoomControl={false} className="heatguard-leaflet-map"><TileLayer attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" /><ZoomControl position="topright" />{demoHeatZones.map((zone) => <Polygon key={zone.id} positions={zone.coordinates} pathOptions={{ color: riskZoneColors[zone.riskLevel], fillColor: riskZoneColors[zone.riskLevel], fillOpacity: .48, weight: 2 }} eventHandlers={{ click: () => setSelectedZone(zone) }}><Popup><strong>{zone.wardName}</strong><br /><small>Synthetic demo zone — not an official ward boundary</small><br />Risk level: {displayLevel(zone.riskLevel)}<br />Risk score: {zone.riskScore}<br />Heat index: {zone.heatIndex}<br />Thermal stress: {zone.thermalStress} / 100</Popup></Polygon>)}</MapContainer>
             <div className="risk-legend"><strong>RISK LEVEL</strong><span><i className="dot very-high" />Very High</span><span><i className="dot high" />High</span><span><i className="dot moderate" />Moderate</span><span><i className="dot low" />Low</span></div>
-            <div className="ward-overlay"><div className="ward-title"><strong>{selectedWard.name} – Demo Area</strong><RiskBadge level={selectedWard.riskLevel} /></div><div><span>Heat Index <em>demo</em></span><b>44.7 °C</b></div><div><span>Thermal Stress</span><b>{selectedWard.thermalStress} / 100</b></div><div><span>Population <em>demo</em></span><b>45,231</b></div><div><span>Risk Score</span><b className="risk-score">{selectedWard.riskScore} / 100</b></div></div><span className="map-demo-label">Synthetic/demo map — not live GIS data</span><span className="fullscreen-mark">⛶</span>
+            <div className="ward-overlay"><div className="ward-title"><strong>{displayedZone.wardName}</strong><RiskBadge level={displayedZone.riskLevel} /></div><div><span>Heat Index <em>demo</em></span><b>{displayedZone.heatIndex}</b></div><div><span>Thermal Stress</span><b>{displayedZone.thermalStress} / 100</b></div><div><span>Population <em>demo</em></span><b>45,231</b></div><div><span>Risk Score</span><b className="risk-score">{displayedZone.riskScore} / 100</b></div></div><span className="map-demo-label">Synthetic/demo zones — not official Hyderabad ward boundaries</span>
           </div>
           <div className="map-timeline"><span>Ⅱ</span><span>14:00</span><div className="timeline-line"><i /></div><span>18:00</span><span>⌁</span></div><div className="map-alert-strip"><span>Active Alerts</span><span className="mini-alert critical">▲ Sector 7C: Critical Overheat <em>demo</em></span><span className="mini-alert">▲ Sector 3A: Elevated Temp <em>demo</em></span><span className="system-status">System Status <i /></span></div>
         </section>
