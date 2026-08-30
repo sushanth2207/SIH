@@ -49,4 +49,5 @@
 .heat-map-demo .risk-legend, .heat-map-demo .ward-overlay, .heat-map-demo .map-demo-label { z-index: 1001; }
 .heat-map-demo .risk-legend, .heat-map-demo .ward-overlay { pointer-events: none; }
 .heat-map-demo .map-demo-label { padding: 4px 7px; border-radius: 3px; background: #090b0dcc; }
+.selected-zone-label { display: block; margin-bottom: 3px; color: #ffbf08; font: 700 .55rem ui-monospace, monospace; letter-spacing: .8px; }
 @media (max-width: 760px) { .heatguard-leaflet-map .leaflet-control-zoom { margin: 10px 10px 0 0; }.heatguard-leaflet-map .leaflet-control-zoom a { width: 34px; height: 34px; line-height: 31px; } }

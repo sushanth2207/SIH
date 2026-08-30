@@ -8,6 +8,7 @@ export const demoHeatZones = [
     riskScore: 81,
     heatIndex: "44.7 °C",
     thermalStress: 79,
+    population: "45,231",
     coordinates: [[17.354, 78.455], [17.354, 78.475], [17.369, 78.475], [17.369, 78.455]],
   },
   {
@@ -17,6 +18,7 @@ export const demoHeatZones = [
     riskScore: 76,
     heatIndex: "42.3 °C",
     thermalStress: 71,
+    population: "38,740",
     coordinates: [[17.366, 78.492], [17.366, 78.512], [17.381, 78.512], [17.381, 78.492]],
   },
   {
@@ -26,6 +28,7 @@ export const demoHeatZones = [
     riskScore: 64,
     heatIndex: "39.8 °C",
     thermalStress: 58,
+    population: "29,615",
     coordinates: [[17.423, 78.365], [17.423, 78.388], [17.439, 78.388], [17.439, 78.365]],
   },
   {
@@ -35,6 +38,7 @@ export const demoHeatZones = [
     riskScore: 38,
     heatIndex: "34.6 °C",
     thermalStress: 31,
+    population: "51,408",
     coordinates: [[17.438, 78.485], [17.438, 78.507], [17.454, 78.507], [17.454, 78.485]],
   },
 ];
