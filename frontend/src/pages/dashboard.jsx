@@ -96,7 +96,7 @@ function Dashboard() {
       </div>
     );
 
-  const { wards, forecast, alerts, analytics, note } = data;
+  const { wards, forecast, alerts, analytics, insights, note } = data;
   const selectedWard =
     wards.find((ward) => ward.areaId === "ward_12") || wards[0];
   const displayedZone =
@@ -448,7 +448,50 @@ function Dashboard() {
               Top Priority Areas <small>demo</small>
             </h2>
             {priorityWards.map((ward, index) => (
-              <div className="priority-row" key={ward.areaId}>
+              <div
+                className="priority-row"
+                key={ward.areaId}
+                role="button"
+                tabIndex={0}
+                onClick={() => {
+                  const zone = demoHeatZones.find(
+                    (item) => item.areaId === ward.areaId,
+                  );
+
+                  if (zone) {
+                    setSelectedZone({
+                      ...zone,
+                      wardName: ward.name,
+                      riskLevel: ward.riskLevel,
+                      riskScore: ward.riskScore,
+                      heatIndex: ward.heatIndex,
+                      thermalStress: ward.thermalStress,
+                      population: ward.population,
+                    });
+                  }
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+
+                    const zone = demoHeatZones.find(
+                      (item) => item.areaId === ward.areaId,
+                    );
+
+                    if (zone) {
+                      setSelectedZone({
+                        ...zone,
+                        wardName: ward.name,
+                        riskLevel: ward.riskLevel,
+                        riskScore: ward.riskScore,
+                        heatIndex: ward.heatIndex,
+                        thermalStress: ward.thermalStress,
+                        population: ward.population,
+                      });
+                    }
+                  }
+                }}
+              >
                 <b>{index + 1}</b>
                 <div>
                   <strong>{ward.name} – Demo area</strong>
@@ -463,20 +506,11 @@ function Dashboard() {
           <div className="insights-label">
             ▣ &nbsp; AI INSIGHTS <small>demo</small>
           </div>
-          <div className="insight-item">
-            ▣{" "}
-            <span>
-              Placeholder: issue heat-safety communication for outdoor workers
-              in Ward 12 and Ward 13.
-            </span>
-          </div>
-          <div className="insight-item">
-            ▣{" "}
-            <span>
-              Placeholder: prepare cooling centres in high-risk areas with
-              vulnerable populations.
-            </span>
-          </div>
+          {insights.items.map((insight) => (
+            <div className="insight-item" key={insight.id}>
+              ▣ <span>{insight.message}</span>
+            </div>
+          ))}
         </section>
         <p className="data-disclaimer">
           {note} Supplementary map, forecast, alert, trend, and insight text on

@@ -126,6 +126,23 @@ app.get("/api/dashboard", (req, res) => {
         { riskLevel: "LOW", count: 1 },
       ],
     },
+    insights: {
+      dataType: "synthetic_demo",
+      items: [
+        {
+          id: "demo-insight-1",
+          type: "RECOMMENDATION",
+          message:
+            "Issue heat-safety communication for outdoor workers in Ward 3 and Ward 7.",
+        },
+        {
+          id: "demo-insight-2",
+          type: "RECOMMENDATION",
+          message:
+            "Prepare cooling centres in high-risk areas with vulnerable populations.",
+        },
+      ],
+    },
   });
 });
 
