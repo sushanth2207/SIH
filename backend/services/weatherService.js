@@ -64,6 +64,101 @@ async function getHistoricalWeather(startDate, endDate) {
   return response.json();
 }
 
+async function getWardCurrentWeather(wards) {
+  if (!wards || wards.length === 0) {
+    return {};
+  }
+
+  const results = {};
+  const batchSize = 25;
+
+  for (let i = 0; i < wards.length; i += batchSize) {
+    const batch = wards.slice(i, i + batchSize);
+
+    const latitudes = batch.map((ward) => ward.latitude).join(",");
+    const longitudes = batch.map((ward) => ward.longitude).join(",");
+
+    const params = new URLSearchParams({
+      latitude: latitudes,
+      longitude: longitudes,
+      current:
+        "temperature_2m,relative_humidity_2m,wind_speed_10m,shortwave_radiation",
+      hourly: "wet_bulb_temperature_2m",
+      timezone: "Asia/Kolkata",
+      forecast_days: "1",
+    });
+
+    const response = await fetch(`${OPEN_METEO_FORECAST_URL}?${params}`);
+
+    if (!response.ok) {
+      throw new Error(
+        `Open-Meteo ward weather request failed: ${response.status}`,
+      );
+    }
+
+    const weatherData = await response.json();
+
+    weatherData.forEach((weather, index) => {
+      const ward = batch[index];
+
+      results[String(ward.ward_id)] = {
+        temperature: weather.current.temperature_2m,
+        relative_humidity: weather.current.relative_humidity_2m,
+        wind_speed: weather.current.wind_speed_10m / 3.6,
+        solar_radiation: weather.current.shortwave_radiation,
+        wet_bulb_temperature: weather.hourly.wet_bulb_temperature_2m[0],
+        timestamp: weather.current.time,
+      };
+    });
+  }
+
+  return results;
+}
+
+async function getWardHistoricalWeather(wards, startDate, endDate) {
+  if (!wards || wards.length === 0) {
+    return {};
+  }
+
+  const results = {};
+  const batchSize = 25;
+
+  for (let i = 0; i < wards.length; i += batchSize) {
+    const batch = wards.slice(i, i + batchSize);
+
+    const latitudes = batch.map((ward) => ward.latitude).join(",");
+    const longitudes = batch.map((ward) => ward.longitude).join(",");
+
+    const params = new URLSearchParams({
+      latitude: latitudes,
+      longitude: longitudes,
+      start_date: startDate,
+      end_date: endDate,
+      hourly:
+        "temperature_2m,relative_humidity_2m,wet_bulb_temperature_2m,wind_speed_10m,shortwave_radiation",
+      timezone: "Asia/Kolkata",
+    });
+
+    const response = await fetch(`${OPEN_METEO_ARCHIVE_URL}?${params}`);
+
+    if (!response.ok) {
+      throw new Error(
+        `Open-Meteo ward historical request failed: ${response.status}`,
+      );
+    }
+
+    const weatherData = await response.json();
+
+    weatherData.forEach((weather, index) => {
+      const ward = batch[index];
+
+      results[String(ward.ward_id)] = prepareWeatherForML(weather);
+    });
+  }
+
+  return results;
+}
+
 function prepareWeatherForML(weatherData) {
   const hourly = weatherData.hourly;
 
@@ -89,6 +184,8 @@ module.exports = {
   getCurrentWeather,
   getForecastWeather,
   getHistoricalWeather,
+  getWardCurrentWeather,
+  getWardHistoricalWeather,
   prepareWeatherForML,
   prepareForecastForML,
 };

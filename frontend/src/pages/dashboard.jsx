@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { Badge } from "react-bootstrap";
 import {
+  CircleMarker,
   MapContainer,
-  Polygon,
   Popup,
   TileLayer,
   ZoomControl,
@@ -21,17 +21,20 @@ import {
 } from "recharts";
 import "leaflet/dist/leaflet.css";
 import "./Dashboard.css";
-import { getDashboardData } from "../services/api";
-import { demoHeatZones, riskZoneColors } from "../data/demoHeatZones";
+import { getDashboardData, getLiveWardPredictions } from "../services/api";
+
 const levelClass = (level) =>
   `risk-${level?.toLowerCase().replace("_", "-") || "moderate"}`;
+
 const displayLevel = (level) => level?.replace("_", " ") || "MODERATE";
+
 const chartColors = {
   VERY_HIGH: "#ff3b4e",
   HIGH: "#ff7200",
   MODERATE: "#ffbc08",
   LOW: "#18b878",
 };
+
 function RiskBadge({ level }) {
   return (
     <Badge className={`risk-badge ${levelClass(level)}`}>
@@ -40,52 +43,33 @@ function RiskBadge({ level }) {
   );
 }
 
-function toSpatialZone(geometry, area) {
-  if (!geometry || !area) return null;
-
-  return {
-    ...geometry,
-    areaName: area.name,
-    riskLevel: area.riskLevel,
-    riskScore: area.riskScore,
-    heatIndex: area.heatIndex,
-    thermalStress: area.thermalStress,
-    population: area.population,
-  };
-}
-
-function polygonPathOptions(riskLevel, isSelected) {
-  const fillColor = riskZoneColors[riskLevel] || riskZoneColors.MODERATE;
-
-  return {
-    color: isSelected ? "#fff6e4" : fillColor,
-    fillColor,
-    fillOpacity: isSelected ? 0.48 : 0.26,
-    weight: isSelected ? 2 : 0.4,
-    opacity: isSelected ? 0.7 : 0.18,
-    lineJoin: "round",
-    lineCap: "round",
-  };
-}
-
 function Dashboard() {
   const [data, setData] = useState(null);
+  const [wardPredictions, setWardPredictions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const hourlyForecast = data?.hourlyForecast || [];
   const [selectedZone, setSelectedZone] = useState(null);
+
+  const hourlyForecast = data?.hourlyForecast || [];
+
   useEffect(() => {
     let cancelled = false;
 
     async function loadDashboard() {
       try {
-        const dashboardData = await getDashboardData();
+        const [dashboardData, wardData] = await Promise.all([
+          getDashboardData(),
+          getLiveWardPredictions(),
+        ]);
 
         if (!cancelled) {
           setData(dashboardData);
+          setWardPredictions(wardData.wards || []);
           setError("");
         }
-      } catch {
+      } catch (loadError) {
+        console.error(loadError);
+
         if (!cancelled) {
           setError(
             "Could not load dashboard data. Start the backend with npm start in the backend folder (http://localhost:5000), then refresh.",
@@ -112,51 +96,62 @@ function Dashboard() {
       clearInterval(refreshInterval);
     };
   }, []);
-  if (loading)
+
+  if (loading) {
     return (
       <div className="dashboard-state">
         <div className="loading-orb" />
         <p>Loading HeatGuard dashboard data…</p>
       </div>
     );
-  if (error)
+  }
+
+  if (error) {
     return (
       <div className="dashboard-state">
         <h1>HEATGUARD</h1>
         <p className="error-message">{error}</p>
       </div>
     );
+  }
 
-  const { wards, forecast, alerts, analytics, note, currentWeather } = data;
-  const riskLevelDistribution = ["VERY_HIGH", "HIGH", "MODERATE", "LOW"].map(
-    (riskLevel) => ({
-      riskLevel,
-      count: hourlyForecast.filter((item) => item.riskLevel === riskLevel)
-        .length,
-    }),
-  );
-  const selectedWard =
-    wards.find((ward) => ward.areaId === "ward_12") || wards[0];
-  const displayedZone =
-    selectedZone ||
-    toSpatialZone(
-      demoHeatZones.find((item) => item.areaId === selectedWard.areaId),
-      selectedWard,
-    );
-  const priorityAreas = [...wards]
+  const { forecast, alerts, analytics, note, currentWeather } = data;
+
+  const liveWards = wardPredictions.map((ward) => ({
+    areaId: `ward_${ward.ward_id}`,
+    name: ward.ward_name,
+    riskScore: ward.prediction.riskScore,
+    riskLevel: ward.prediction.riskLevel,
+    thermalStress: ward.prediction.HTSI,
+    heatIndex: `${ward.prediction.heatIndex} °C`,
+    population: ward.population,
+    latitude: ward.latitude,
+    longitude: ward.longitude,
+    HTSI: ward.prediction.HTSI,
+    estimatedWBGT: ward.prediction.estimatedWBGT,
+  }));
+
+  const selectedWard = liveWards[0];
+
+  const displayedZone = selectedZone || selectedWard;
+
+  const priorityAreas = [...liveWards]
     .sort((a, b) => b.riskScore - a.riskScore)
     .slice(0, 3);
 
-  const selectSpatialArea = (area) => {
-    const zone = toSpatialZone(
-      demoHeatZones.find((item) => item.areaId === area.areaId),
-      area,
-    );
+  const riskLevelDistribution = ["VERY_HIGH", "HIGH", "MODERATE", "LOW"].map(
+    (riskLevel) => ({
+      riskLevel,
+      count: wardPredictions.filter(
+        (ward) => ward.prediction?.riskLevel === riskLevel,
+      ).length,
+    }),
+  );
 
-    if (zone) {
-      setSelectedZone(zone);
-    }
+  const selectSpatialArea = (area) => {
+    setSelectedZone(area);
   };
+
   return (
     <div className="heatguard-shell">
       <header className="heatguard-header">
@@ -164,16 +159,19 @@ function Dashboard() {
           <h1>Dashboard Overview</h1>
           <p>Real-time heat risk monitoring and prediction system</p>
         </div>
+
         <div className="header-brand">
           <span className="brand-flame" aria-hidden="true">
             ♨
           </span>
+
           <div>
             <strong>HEATGUARD</strong>
             <small>Hyderabad</small>
           </div>
         </div>
       </header>
+
       <main className="heatguard-main">
         <div className="dashboard-layout">
           <div className="dashboard-primary">
@@ -181,15 +179,13 @@ function Dashboard() {
               <div className="panel-heading">
                 <div>
                   <h1>Hyderabad Heat Map</h1>
-                  <p>
-                    Illustrative spatial risk layer — not official ward
-                    boundaries
-                  </p>
+                  <p>Live ML thermal-risk predictions at ward locations</p>
                 </div>
               </div>
+
               <div
                 className="heat-map-demo"
-                aria-label="Illustrative spatial heat risk map for Hyderabad, not official ward boundaries"
+                aria-label="Live thermal risk predictions for Hyderabad ward locations"
               >
                 <MapContainer
                   center={[17.385, 78.4867]}
@@ -201,131 +197,153 @@ function Dashboard() {
                     attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                     url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                   />
+
                   <ZoomControl position="topright" />
-                  {demoHeatZones.map((geometry) => {
-                    const area = wards.find(
-                      (item) => item.areaId === geometry.areaId,
-                    );
-                    const zone = toSpatialZone(geometry, area);
 
-                    if (!zone) return null;
-
+                  {liveWards.map((ward) => {
                     const isSelected =
                       (selectedZone?.areaId || displayedZone?.areaId) ===
-                      zone.areaId;
+                      ward.areaId;
+
+                    const fillColor =
+                      chartColors[ward.riskLevel] || chartColors.MODERATE;
 
                     return (
-                      <Polygon
-                        key={zone.areaId}
-                        positions={zone.coordinates}
+                      <CircleMarker
+                        key={ward.areaId}
+                        center={[ward.latitude, ward.longitude]}
+                        radius={isSelected ? 11 : 7}
                         pathOptions={{
-                          ...polygonPathOptions(zone.riskLevel, isSelected),
-                          className: isSelected
-                            ? "heat-zone-selected"
-                            : "heat-zone",
+                          color: "#ffffff",
+                          fillColor,
+                          fillOpacity: isSelected ? 0.9 : 0.7,
+                          weight: isSelected ? 2 : 1,
                         }}
                         eventHandlers={{
-                          click: () => setSelectedZone(zone),
-                          add: (event) => {
-                            if (isSelected) {
-                              event.target.bringToFront();
-                            }
-                          },
+                          click: () => setSelectedZone(ward),
                         }}
                       >
                         <Popup className="heat-zone-popup">
                           <span className="heat-popup-kicker">
-                            Illustrative area
+                            Live ward prediction
                           </span>
-                          <strong>{zone.areaName}</strong>
+
+                          <strong>{ward.name}</strong>
+
                           <span className="heat-popup-level">
-                            {displayLevel(zone.riskLevel)}
+                            {displayLevel(ward.riskLevel)}
                           </span>
+
                           <span className="heat-popup-stat">
-                            Risk score <b>{zone.riskScore} / 100</b>
+                            Risk score <b>{ward.riskScore} / 100</b>
                           </span>
+
                           <span className="heat-popup-stat">
-                            Heat index <b>{zone.heatIndex}</b>
+                            HTSI <b>{ward.HTSI} / 100</b>
                           </span>
+
                           <span className="heat-popup-stat">
-                            Thermal stress <b>{zone.thermalStress} / 100</b>
+                            Heat index <b>{ward.heatIndex}</b>
                           </span>
+
                           <span className="heat-popup-stat">
-                            Population <b>{zone.population}</b>
+                            Population <b>{ward.population}</b>
                           </span>
+
                           <small>
-                            Schematic geometry — not an official ward boundary
+                            Live weather + ML prediction at ward centroid
                           </small>
                         </Popup>
-                      </Polygon>
+                      </CircleMarker>
                     );
                   })}
                 </MapContainer>
+
                 <div className="risk-legend">
                   <strong>RISK LEVEL</strong>
-                  <span className="legend-caption">Illustrative layer</span>
+                  <span className="legend-caption">Live ward predictions</span>
+
                   <span>
                     <i className="dot very-high" />
                     Very High
                   </span>
+
                   <span>
                     <i className="dot high" />
                     High
                   </span>
+
                   <span>
                     <i className="dot moderate" />
                     Moderate
                   </span>
+
                   <span>
                     <i className="dot low" />
                     Low
                   </span>
                 </div>
+
                 {displayedZone && (
                   <div className="ward-overlay">
                     <div className="ward-title">
                       <div>
                         <small className="selected-zone-label">
-                          {selectedZone ? "SELECTED AREA" : "FOCUS AREA"}
+                          {selectedZone ? "SELECTED WARD" : "FOCUS WARD"}
                         </small>
-                        <strong>{displayedZone.areaName}</strong>
+
+                        <strong>{displayedZone.name}</strong>
                       </div>
+
                       <RiskBadge level={displayedZone.riskLevel} />
                     </div>
+
                     <div>
                       <span>Heat Index</span>
                       <b>{displayedZone.heatIndex}</b>
                     </div>
+
                     <div>
                       <span>Thermal Stress</span>
                       <b>{displayedZone.thermalStress} / 100</b>
                     </div>
+
                     <div>
                       <span>Population</span>
                       <b>{displayedZone.population}</b>
                     </div>
+
                     <div>
                       <span>Risk Score</span>
                       <b className="risk-score">
                         {displayedZone.riskScore} / 100
                       </b>
                     </div>
-                    <p className="overlay-caption">Illustrative spatial data</p>
+
+                    <p className="overlay-caption">
+                      Live ML prediction at ward centroid
+                    </p>
                   </div>
                 )}
+
                 <span className="map-demo-label">
-                  Illustrative spatial risk layer — not official ward boundaries
+                  Point locations represent ward centroids; official ward
+                  boundaries are not displayed.
                 </span>
               </div>
+
               <div className="map-timeline">
                 <span>Ⅱ</span>
                 <span>14:00</span>
+
                 <div className="timeline-line">
                   <i />
                 </div>
+
                 <span>18:00</span>
                 <span>⌁</span>
               </div>
+
               <div className="map-alert-strip">
                 <span>Active Alerts</span>
 
@@ -345,11 +363,13 @@ function Dashboard() {
                 </span>
               </div>
             </section>
+
             <section className="analytics-grid">
               <section className="heat-panel chart-panel">
                 <h2>
                   Heat Index Trend (Hyderabad) <small>ML forecast</small>
                 </h2>
+
                 <div className="line-chart">
                   <ResponsiveContainer width="100%" height={168}>
                     <LineChart
@@ -360,26 +380,40 @@ function Dashboard() {
                             : "",
                         heatIndex: item.heatIndex,
                       }))}
-                      margin={{ top: 12, right: 8, left: -22, bottom: 0 }}
+                      margin={{
+                        top: 12,
+                        right: 8,
+                        left: -22,
+                        bottom: 0,
+                      }}
                     >
                       <CartesianGrid
                         vertical={false}
                         stroke="#253033"
                         strokeDasharray="3 3"
                       />
+
                       <XAxis
                         dataKey="label"
                         interval={0}
-                        tick={{ fill: "#9b9895", fontSize: 9 }}
+                        tick={{
+                          fill: "#9b9895",
+                          fontSize: 9,
+                        }}
                         axisLine={false}
                         tickLine={false}
                       />
+
                       <YAxis
-                        tick={{ fill: "#9b9895", fontSize: 10 }}
+                        tick={{
+                          fill: "#9b9895",
+                          fontSize: 10,
+                        }}
                         axisLine={false}
                         tickLine={false}
                         domain={["dataMin - 1", "dataMax + 1"]}
                       />
+
                       <Tooltip
                         contentStyle={{
                           background: "#111517",
@@ -387,25 +421,34 @@ function Dashboard() {
                           borderRadius: 4,
                           color: "#f5eee7",
                         }}
-                        labelStyle={{ color: "#ffbf08" }}
+                        labelStyle={{
+                          color: "#ffbf08",
+                        }}
                         formatter={(value) => [`${value} °C`, "Heat index"]}
                       />
+
                       <Line
                         type="monotone"
                         dataKey="heatIndex"
                         stroke="#ffa3a0"
                         strokeWidth={2.5}
-                        dot={{ fill: "#ffa3a0", r: 2.5, strokeWidth: 0 }}
+                        dot={{
+                          fill: "#ffa3a0",
+                          r: 2.5,
+                          strokeWidth: 0,
+                        }}
                         activeDot={{ r: 5 }}
                       />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
               </section>
+
               <section className="heat-panel distribution-panel">
                 <h2>
-                  Risk Level Distribution <small>ML forecast</small>
+                  Risk Level Distribution <small>155 live wards</small>
                 </h2>
+
                 <div className="distribution-content">
                   <div className="distribution-donut">
                     <PieChart width={168} height={168}>
@@ -428,25 +471,34 @@ function Dashboard() {
                         ))}
                       </Pie>
                     </PieChart>
-                    <span>HOURS</span>
+
+                    <span>WARDS</span>
                   </div>
+
                   <div className="distribution-list">
-                    {analytics.riskLevelDistribution.map((item) => (
+                    {riskLevelDistribution.map((item) => (
                       <span key={item.riskLevel}>
                         <i
-                          className={`dot ${levelClass(item.riskLevel).replace("risk-", "")}`}
+                          className={`dot ${levelClass(item.riskLevel).replace(
+                            "risk-",
+                            "",
+                          )}`}
                         />
+
                         <em>{displayLevel(item.riskLevel)}</em>
+
                         <b>{item.count}</b>
                       </span>
                     ))}
                   </div>
                 </div>
               </section>
+
               <section className="heat-panel priority-panel">
                 <h2>
-                  Top Priority Areas <small>illustrative spatial data</small>
+                  Top Priority Areas <small>live ward predictions</small>
                 </h2>
+
                 {priorityAreas.map((area, index) => {
                   const isSelected =
                     (selectedZone?.areaId || displayedZone?.areaId) ===
@@ -454,7 +506,9 @@ function Dashboard() {
 
                   return (
                     <div
-                      className={`priority-row ${isSelected ? "is-selected" : ""}`}
+                      className={`priority-row ${
+                        isSelected ? "is-selected" : ""
+                      }`}
                       key={area.areaId}
                       role="button"
                       tabIndex={0}
@@ -470,30 +524,38 @@ function Dashboard() {
                       <b className="priority-rank">
                         {String(index + 1).padStart(2, "0")}
                       </b>
+
                       <div className="priority-copy">
                         <strong>{area.name}</strong>
-                        <small>Illustrative area</small>
+
+                        <small>Live ward prediction</small>
+
                         <div className="priority-metrics">
                           <span>
                             Score <b>{area.riskScore}</b>
                           </span>
+
                           <span>
                             HI <b>{area.heatIndex}</b>
                           </span>
+
                           <span>
                             Pop. <b>{area.population}</b>
                           </span>
                         </div>
                       </div>
+
                       <RiskBadge level={area.riskLevel} />
                     </div>
                   );
                 })}
               </section>
             </section>
+
             <section className="heat-panel insights-panel">
               <div className="insights-header">
                 <div className="insights-label">HEATGUARD INSIGHTS</div>
+
                 <small>ML derived</small>
               </div>
 
@@ -511,6 +573,7 @@ function Dashboard() {
                       key={`ml-insight-${item.date}`}
                     >
                       <span className="insight-kicker">{item.day}</span>
+
                       <p>
                         Forecast at{" "}
                         <strong>{item.riskLevel.replace("_", " ")}</strong> heat
@@ -522,12 +585,144 @@ function Dashboard() {
                   ))}
               </div>
             </section>
+            <section className="heat-panel precautions-panel">
+              <div className="insights-header">
+                <div className="insights-label">HEAT SAFETY PRECAUTIONS</div>
+
+                <small>
+                  {displayedZone?.riskLevel
+                    ? `${displayedZone.riskLevel.replace("_", " ")} RISK`
+                    : "LIVE"}
+                </small>
+              </div>
+
+              <div className="precautions-list">
+                {displayedZone?.riskLevel === "VERY_HIGH" && (
+                  <>
+                    <div className="precaution-item">
+                      <strong>Avoid unnecessary outdoor activity</strong>
+                      <span>
+                        Stay indoors or in a cool, shaded environment.
+                      </span>
+                    </div>
+
+                    <div className="precaution-item">
+                      <strong>Stay hydrated</strong>
+                      <span>
+                        Drink water frequently, even when you are not thirsty.
+                      </span>
+                    </div>
+
+                    <div className="precaution-item">
+                      <strong>Protect vulnerable people</strong>
+                      <span>
+                        Do not leave children, elderly people, or other
+                        vulnerable persons unattended in the heat.
+                      </span>
+                    </div>
+
+                    <div className="precaution-item">
+                      <strong>Reschedule strenuous work</strong>
+                      <span>
+                        Avoid heavy physical activity during peak heat hours.
+                      </span>
+                    </div>
+
+                    <div className="precaution-item">
+                      <strong>Watch for heat illness</strong>
+                      <span>
+                        Seek medical help if severe dizziness, confusion,
+                        fainting, or other serious symptoms occur.
+                      </span>
+                    </div>
+                  </>
+                )}
+
+                {displayedZone?.riskLevel === "HIGH" && (
+                  <>
+                    <div className="precaution-item">
+                      <strong>Stay hydrated</strong>
+                      <span>Drink water regularly throughout the day.</span>
+                    </div>
+
+                    <div className="precaution-item">
+                      <strong>Limit outdoor exposure</strong>
+                      <span>
+                        Avoid prolonged outdoor activity during peak heat.
+                      </span>
+                    </div>
+
+                    <div className="precaution-item">
+                      <strong>Take shade and rest breaks</strong>
+                      <span>
+                        Use shaded or cool areas frequently when outdoors.
+                      </span>
+                    </div>
+
+                    <div className="precaution-item">
+                      <strong>Check on vulnerable people</strong>
+                      <span>
+                        Pay extra attention to elderly people, children, and
+                        outdoor workers.
+                      </span>
+                    </div>
+
+                    <div className="precaution-item">
+                      <strong>Wear light clothing</strong>
+                      <span>
+                        Prefer loose, lightweight clothing when outdoors.
+                      </span>
+                    </div>
+                  </>
+                )}
+
+                {displayedZone?.riskLevel === "MODERATE" && (
+                  <>
+                    <div className="precaution-item">
+                      <strong>Stay hydrated</strong>
+                      <span>
+                        Drink water regularly, especially when outdoors.
+                      </span>
+                    </div>
+
+                    <div className="precaution-item">
+                      <strong>Take breaks from the heat</strong>
+                      <span>
+                        Use shade or cool areas when you begin feeling
+                        overheated.
+                      </span>
+                    </div>
+
+                    <div className="precaution-item">
+                      <strong>Monitor vulnerable people</strong>
+                      <span>
+                        Check on elderly people, children, and people working
+                        outdoors.
+                      </span>
+                    </div>
+                  </>
+                )}
+
+                {displayedZone?.riskLevel === "LOW" && (
+                  <div className="precaution-item">
+                    <strong>Normal heat precautions</strong>
+                    <span>
+                      Stay hydrated and remain aware of changing heat
+                      conditions.
+                    </span>
+                  </div>
+                )}
+              </div>
+            </section>
+
             <p className="data-disclaimer">
-              {note} The Hyderabad map and Top Priority Areas use an
-              illustrative spatial layer — not official ward boundaries and not
-              ward-level ML predictions.
+              {note} Live ward predictions are generated from ward-location
+              weather data and the HeatGuard ML + HTSI pipeline. Map points
+              represent ward centroids; official ward boundaries are not
+              displayed.
             </p>
           </div>
+
           <aside className="right-rail">
             <section className="heat-panel weather-panel">
               <h2>
@@ -570,6 +765,7 @@ function Dashboard() {
                 </div>
               </div>
             </section>
+
             <section className="heat-panel forecast-panel">
               <h2>
                 3-Day Heat Risk Forecast <small>ML forecast</small>
@@ -609,6 +805,7 @@ function Dashboard() {
                 </div>
               ))}
             </section>
+
             <section className="heat-panel alerts-panel">
               <h2>
                 Heat Risk Alerts <small>ML generated</small>
@@ -662,4 +859,5 @@ function Dashboard() {
     </div>
   );
 }
+
 export default Dashboard;

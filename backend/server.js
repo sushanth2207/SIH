@@ -6,13 +6,20 @@ const {
   getCurrentWeather,
   getHistoricalWeather,
   getForecastWeather,
+  getWardCurrentWeather,
+  getWardHistoricalWeather,
   prepareWeatherForML,
   prepareForecastForML,
 } = require("./services/weatherService");
 
-const { getDashboardForecast } = require("./services/mlService");
+const {
+  getDashboardForecast,
+  getWardPrediction,
+  getWardPredictionsBatch,
+} = require("./services/mlService");
 const { shouldSendSms, markSmsSent } = require("./services/alertService");
 const { sendHeatAlert } = require("./services/twilioService");
+const { getAllWards, getWardById } = require("./services/wardService");
 
 const app = express();
 
@@ -39,6 +46,226 @@ app.get("/api/weather", async (req, res) => {
 
     res.status(502).json({
       error: "Unable to fetch weather data",
+    });
+  }
+});
+
+app.get("/api/wards", (req, res) => {
+  try {
+    const wards = getAllWards();
+
+    res.json({
+      dataType: "ward_master",
+      count: wards.length,
+      wards,
+    });
+  } catch (error) {
+    console.error("Ward API error:", error);
+
+    res.status(500).json({
+      error: "Unable to load ward data",
+      details: error.message,
+    });
+  }
+});
+
+app.get("/api/wards/live-weather", async (req, res) => {
+  try {
+    const wards = getAllWards();
+    const weatherByWard = await getWardCurrentWeather(wards);
+
+    const liveWards = wards.map((ward) => ({
+      ward_id: ward.ward_id,
+      ward_name: ward.ward_name,
+      latitude: ward.latitude,
+      longitude: ward.longitude,
+      weather: weatherByWard[ward.ward_id] || null,
+    }));
+
+    res.json({
+      dataType: "live_ward_weather",
+      count: liveWards.length,
+      wards: liveWards,
+    });
+  } catch (error) {
+    console.error("Live ward weather error:", error);
+
+    res.status(502).json({
+      error: "Unable to fetch live weather for wards",
+      details: error.message,
+    });
+  }
+});
+
+app.get("/api/wards/live-predictions", async (req, res) => {
+  try {
+    const wards = getAllWards();
+
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - 7);
+
+    const formatDate = (date) => date.toISOString().split("T")[0];
+
+    const start = formatDate(startDate);
+    const end = formatDate(endDate);
+
+    console.log("Fetching ward historical weather...");
+
+    const historicalByWard = await getWardHistoricalWeather(wards, start, end);
+
+    console.log("Fetching ward live weather...");
+
+    const currentByWard = await getWardCurrentWeather(wards);
+
+    const batchInput = wards
+      .map((ward) => {
+        const wardId = String(ward.ward_id);
+
+        const historicalWeather = historicalByWard[wardId] || [];
+
+        const currentWeather = currentByWard[wardId];
+
+        if (!currentWeather || historicalWeather.length === 0) {
+          return null;
+        }
+
+        return {
+          ward_id: ward.ward_id,
+
+          historicalWeather,
+
+          currentWeather: [
+            {
+              datetime: currentWeather.timestamp,
+
+              temperature: currentWeather.temperature,
+
+              relative_humidity: currentWeather.relative_humidity,
+
+              wet_bulb_temperature: currentWeather.wet_bulb_temperature,
+
+              wind_speed: currentWeather.wind_speed,
+
+              solar_radiation_wm2: currentWeather.solar_radiation,
+            },
+          ],
+        };
+      })
+      .filter(Boolean);
+
+    console.log(`Sending ${batchInput.length} wards to ML batch API...`);
+
+    const batchResult = await getWardPredictionsBatch(batchInput);
+
+    const predictionByWard = new Map(
+      batchResult.predictions.map((prediction) => [
+        String(prediction.ward_id),
+        prediction,
+      ]),
+    );
+
+    const predictions = wards
+      .map((ward) => {
+        const prediction = predictionByWard.get(String(ward.ward_id));
+
+        if (!prediction) {
+          return null;
+        }
+
+        return {
+          ward_id: ward.ward_id,
+          ward_name: ward.ward_name,
+          circle: ward.circle,
+          zone: ward.zone,
+
+          latitude: ward.latitude,
+          longitude: ward.longitude,
+
+          population: ward.population,
+          population_density: ward.population_density,
+
+          elderly_percentage: ward.elderly_percentage,
+
+          outdoor_worker_density: ward.outdoor_worker_density,
+
+          healthcare_access: ward.healthcare_access,
+
+          informal_settlement_percentage: ward.informal_settlement_percentage,
+
+          vulnerability_score: ward.vulnerability_score,
+
+          vulnerability_level: ward.vulnerability_level,
+
+          weather: {
+            temperature: prediction.temperature,
+
+            relativeHumidity: prediction.relativeHumidity,
+
+            wetBulbTemperature: prediction.wetBulbTemperature,
+
+            windSpeed: prediction.windSpeed,
+
+            solarRadiation: prediction.solarRadiation,
+          },
+
+          prediction: {
+            riskScore: prediction.riskScore,
+
+            riskLevel: prediction.riskLevel,
+
+            heatIndex: prediction.heatIndex,
+
+            estimatedWBGT: prediction.estimatedWBGT,
+
+            HTSI: prediction.HTSI,
+          },
+        };
+      })
+      .filter(Boolean);
+
+    console.log(
+      `Ward predictions ready: ${predictions.length}/${wards.length}`,
+    );
+
+    res.json({
+      dataType: "live_ward_predictions",
+
+      count: predictions.length,
+
+      wards: predictions,
+    });
+  } catch (error) {
+    console.error("Live ward prediction error:", error);
+
+    res.status(502).json({
+      error: "Unable to generate live ward predictions",
+
+      details: error.message,
+    });
+  }
+});
+
+app.get("/api/wards/:wardId", (req, res) => {
+  try {
+    const ward = getWardById(req.params.wardId);
+
+    if (!ward) {
+      return res.status(404).json({
+        error: "Ward not found",
+      });
+    }
+
+    res.json({
+      dataType: "ward_master",
+      ward,
+    });
+  } catch (error) {
+    console.error("Ward detail API error:", error);
+
+    res.status(500).json({
+      error: "Unable to load ward data",
+      details: error.message,
     });
   }
 });

@@ -9,3 +9,13 @@ export async function getDashboardData() {
 
   return response.json();
 }
+
+export async function getLiveWardPredictions() {
+  const response = await fetch(`${API_BASE_URL}/api/wards/live-predictions`);
+
+  if (!response.ok) {
+    throw new Error(`Ward prediction request failed (${response.status})`);
+  }
+
+  return response.json();
+}
